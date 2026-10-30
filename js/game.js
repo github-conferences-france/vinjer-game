@@ -7,7 +7,7 @@
   const view = $('view'), ctx = view.getContext('2d');
   const mini = $('minimap'), mctx = mini.getContext('2d');
   const TAU = Math.PI * 2;
-  const NEAR = 0.6, FAR = 560, FOV = 60 * Math.PI / 180;
+  const NEAR = 0.6, FAR = 340, FOV = 60 * Math.PI / 180;
   const PENALTY = 15;
   const PLAYER_SCALE = 1.35;
   const LIGHT = norm([0.45, 0.8, -0.5]);
@@ -38,8 +38,11 @@
         white: [235, 250, 255], dark: [10, 20, 30],
       },
     };
+    PAL.font = '600 13px ' + getComputedStyle(document.body).fontFamily;
+    skyGrad = null;
     buildMinimapBase();
   }
+  let skyGrad = null;
 
   // ---------------- static geometry ----------------
   const faces = [];
@@ -70,7 +73,7 @@
       const a = foot[i], b = foot[(i + 1) % foot.length];
       addFace([[a[0], y0, a[1]], [b[0], y0, b[1]], [b[0], y1, b[1]], [a[0], y1, a[1]]], base, k, c, opts);
     }
-    addFace(foot.map(p => [p[0], y1, p[1]]), base, k * 1.08, c, opts);
+    if (!(opts && opts.noTop)) addFace(foot.map(p => [p[0], y1, p[1]]), base, k * 1.08, c, opts);
     if (y0 > 0.01) addFace(foot.map(p => [p[0], y0, p[1]]).reverse(), base, k * 0.7, c, opts);
   }
   const rect = (x0, x1, z0, z1) => [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
@@ -104,11 +107,12 @@
   // generic buildings
   for (const b of world.buildings) {
     const k = 0.82 + b.tint * 0.36;
-    box(b.x0, b.x1, b.z0, b.z1, 0, b.h, 'bld', k, { edge: true });
-    if (b.tint > 0.55 && b.x1 - b.x0 > 14 && b.z1 - b.z0 > 14) hipRoof(b.x0, b.x1, b.z0, b.z1, b.h, b.h + 4, 'bld', k * 0.8, { edge: true });
+    const roof = b.tint > 0.55 && b.x1 - b.x0 > 14 && b.z1 - b.z0 > 14;
+    box(b.x0, b.x1, b.z0, b.z1, 0, b.h, 'bld', k, { edge: true, noTop: roof });
+    if (roof) hipRoof(b.x0, b.x1, b.z0, b.z1, b.h, b.h + 4, 'bld', k * 0.8, { edge: true });
   }
   // landmarks
-  const LM = { edge: true };
+  const LM = { edge: true }, LMR = { edge: true, noTop: true };
   // Porte d'Aquitaine (Place de la Victoire)
   box(-10, -1, -732, -716, 0, 14, 'stone', 1, LM); box(17, 26, -732, -716, 0, 14, 'stone', 1, LM);
   box(-11, 27, -733, -715, 14, 19, 'stone', 1.05, LM); pyramid(rect(-11, 27, -733, -715), 19, 23, 'stone', 0.95, LM);
@@ -118,8 +122,8 @@
   box(118, 134, -138, -130, 24, 31, 'stone', 1, LM); box(123, 129, -135.5, -132.5, 25, 29, 'neon2', 0.9, { glow: 'neon2' });
   pyramid(rect(117, 135, -139, -129), 31, 39, 'neon2', 0.55, LM);
   // Cathédrale Saint-André + Tour Pey-Berland
-  box(-470, -385, 106, 134, 0, 26, 'stone', 1, LM); hipRoof(-470, -385, 106, 134, 26, 36, 'stone', 0.8, LM);
-  box(-440, -424, 96, 144, 0, 24, 'stone', 1.02, LM);
+  box(-470, -385, 106, 134, 0, 26, 'stone', 1, LMR); hipRoof(-470, -385, 106, 134, 26, 36, 'stone', 0.8, LM);
+  box(-440, -424, 96, 106, 0, 24, 'stone', 1.02, LM); box(-440, -424, 134, 144, 0, 24, 'stone', 1.02, LM);
   for (const tz of [109, 131]) { box(-490, -476, tz - 6, tz + 6, 0, 40, 'stone', 1, LM); pyramid(rect(-490, -476, tz - 6, tz + 6), 40, 64, 'stone', 0.9, LM); }
   box(-336, -324, 34, 46, 0, 46, 'stone', 1, LM); pyramid(rect(-336, -324, 34, 46), 46, 62, 'stone', 0.9, LM);
   box(-331, -329, 39, 41, 62, 66, 'neon2', 1, { glow: 'neon2' });
@@ -133,7 +137,7 @@
   box(-123, -116, 576, 640, 16, 19, 'stone', 1.1, LM);
   // Place de la Bourse
   for (const [x0, x1, z0, z1] of [[230, 320, 507, 527], [230, 320, 413, 433], [215, 235, 413, 527]]) {
-    box(x0, x1, z0, z1, 0, 17, 'stone', 1.05, LM); hipRoof(x0, x1, z0, z1, 17, 23, 'stone', 0.75, LM);
+    box(x0, x1, z0, z1, 0, 17, 'stone', 1.05, LMR); hipRoof(x0, x1, z0, z1, 17, 23, 'stone', 0.75, LM);
   }
   prism(ngon(285, 470, 4, 10), 0, 1, 'stone', 1, LM); prism(ngon(285, 470, 1, 6), 1, 6, 'neon2', 0.8, { glow: 'neon2' });
   // Monument aux Girondins
@@ -172,7 +176,8 @@
   const cam = { x: 0, y: 0, z: 0, r: [1, 0, 0], u: [0, 1, 0], f: [0, 0, 1], F: 1, yaw: 0, dist: 20 };
   function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, 1.75);
-    VW = window.innerWidth; VH = window.innerHeight;
+    VW = view.clientWidth || window.innerWidth; VH = view.clientHeight || window.innerHeight;
+    skyGrad = null;
     view.width = Math.round(VW * DPR); view.height = Math.round(VH * DPR);
     cam.F = (VH / 2) / Math.tan(FOV / 2);
     const md = Math.min(window.devicePixelRatio || 1, 2);
@@ -266,6 +271,25 @@
     const k = f.k;
     return [base[0] * k * (1 - ff) + PAL.rgb.fog[0] * ff, base[1] * k * (1 - ff) + PAL.rgb.fog[1] * ff, base[2] * k * (1 - ff) + PAL.rgb.fog[2] * ff, fog];
   }
+  // spatial cells so whole blocks of faces are culled with one test
+  const CELL = 80, cells = new Map();
+  function buildCells() {
+    for (const f of faces) {
+      const key = Math.floor(f.cx / CELL) + ',' + Math.floor(f.cz / CELL);
+      let c = cells.get(key);
+      if (!c) { c = { cx: (Math.floor(f.cx / CELL) + 0.5) * CELL, cz: (Math.floor(f.cz / CELL) + 0.5) * CELL, rad: CELL * 0.75, faces: [] }; cells.set(key, c); }
+      c.rad = Math.max(c.rad, Math.hypot(f.cx - c.cx, f.cz - c.cz) + f.rad);
+      c.faces.push(f);
+    }
+  }
+  function collectCells() {
+    for (const c of cells.values()) {
+      const dx = c.cx - cam.x, dz = c.cz - cam.z, lim = FAR + c.rad;
+      if (dx * dx + dz * dz > lim * lim) continue;
+      if (dx * cam.f[0] + dz * cam.f[2] < -c.rad) continue;
+      collect(c.faces);
+    }
+  }
   function collect(list) {
     for (const f of list) {
       const dx = f.cx - cam.x, dz = f.cz - cam.z;
@@ -348,10 +372,11 @@
 
   function render(dt) {
     setupCamera(player, dt);
-    // sky
-    const sky = ctx.createLinearGradient(0, 0, 0, VH);
-    sky.addColorStop(0, PAL.sky0); sky.addColorStop(0.55, PAL.sky1); sky.addColorStop(1, PAL.sky1);
-    ctx.fillStyle = sky; ctx.fillRect(0, 0, VW, VH);
+    if (!skyGrad) {
+      skyGrad = ctx.createLinearGradient(0, 0, 0, VH);
+      skyGrad.addColorStop(0, PAL.sky0); skyGrad.addColorStop(0.55, PAL.sky1); skyGrad.addColorStop(1, PAL.sky1);
+    }
+    ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, VW, VH);
     // ground plane
     const G = 4000;
     const gp = projectFlat(flatGround([[cam.x - G, cam.z - G], [cam.x + G, cam.z - G], [cam.x + G, cam.z + G], [cam.x - G, cam.z + G]]));
@@ -365,7 +390,7 @@
     drawShadow();
     // solids
     drawList.length = 0;
-    collect(faces);
+    collectCells();
     collect(playerFaces());
     drawList.sort((a, b) => b.depth - a.depth);
     ctx.lineJoin = 'round';
@@ -375,7 +400,7 @@
       ctx.fillStyle = rgbStr(c);
       if (d.f.glow && d.depth < 70) { ctx.shadowColor = PAL[d.f.glow]; ctx.shadowBlur = 14; ctx.fill(); ctx.shadowBlur = 0; }
       else ctx.fill();
-      if (d.f.edge) {
+      if (d.f.edge && (d.depth < 160 || d.f.glow || d.f.base === 'stone')) {
         ctx.lineWidth = 1;
         ctx.strokeStyle = d.f.glow ? rgbStr(PAL.rgb[d.f.glow], 0.9 * (1 - c[3])) : d.f.base === 'stone' ? rgbStr(PAL.rgb.neon2, 0.22 * (1 - c[3])) : PAL.edge;
         ctx.stroke();
@@ -418,7 +443,7 @@
     ctx.restore();
   }
   function drawLabels() {
-    ctx.font = '600 13px ' + getComputedStyle(document.body).fontFamily;
+    ctx.font = PAL.font;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     world.places.forEach((pl, i) => {
       const isTarget = currentTarget() === pl;
@@ -501,20 +526,28 @@
     });
   }
   let lastHud = '';
+  const hudCache = {};
+  function setText(el, v) { if (hudCache[el.id] !== v) { hudCache[el.id] = v; el.textContent = v; } }
+  function announce(msg) { $('sr-live').textContent = msg; }
+  let lastWarn = 999;
   function updateHud() {
-    elTimer.textContent = fmt(timeLeft);
-    elTimer.className = timeLeft < 30 ? 'crit' : timeLeft < 60 ? 'warn' : '';
+    setText(elTimer, fmt(timeLeft));
+    const cls = timeLeft < 30 ? 'crit' : timeLeft < 60 ? 'warn' : '';
+    if (elTimer.className !== cls) elTimer.className = cls;
+    for (const w of [60, 30]) if (lastWarn > w && timeLeft <= w && (state === 'play' || state === 'quiz')) announce(`${w} seconds left`);
+    lastWarn = timeLeft;
     const t = currentTarget();
     if (t) {
       const n = world.nodes[t.node];
       const d = Math.hypot(n.x - player.x, n.z - player.z);
       const key = t.id;
       if (key !== lastHud) { elName.textContent = t.name; elHint.textContent = world.places[stage - 1].hint; lastHud = key; }
-      elDist.textContent = `${Math.round(d)} m · stop ${stage}/4`;
+      setText(elDist, `${Math.round(d / 5) * 5} m · stop ${stage}/4`);
       const rel = angleDiff(player.heading, Math.atan2(n.x - player.x, n.z - player.z));
-      elArrow.style.transform = `rotate(${rel}rad)`;
+      const tr = `rotate(${rel.toFixed(2)}rad)`;
+      if (hudCache.arrow !== tr) { hudCache.arrow = tr; elArrow.style.transform = tr; }
     } else if (lastHud !== 'none') {
-      elName.textContent = 'Solve the first clue'; elDist.textContent = 'Place de la Victoire'; elHint.textContent = ''; lastHud = 'none';
+      elName.textContent = 'Solve the first clue'; setText(elDist, 'Place de la Victoire'); elHint.textContent = ''; lastHud = 'none';
     }
   }
   let toastTimer = 0;
@@ -567,6 +600,8 @@
     });
     $('quiz-reveal').classList.remove('show');
     show('quiz', true);
+    opts.firstElementChild.focus();
+    announce(`${pl.name}. ${c.q}`);
     if (i > 0) blip(660, 0.15, 'triangle'), blip(990, 0.2, 'triangle');
   }
   function answer(k) {
@@ -591,11 +626,13 @@
     }
   }
   function closeQuiz() {
-    if (!quizSolved) return;
+    if (state !== 'quiz' || !quizSolved) return;
     show('quiz', false);
     stage++; state = 'play';
     updateStops();
     toast(`Go to ${world.places[stage].name}!`, 'ok');
+    announce(`Go to ${world.places[stage].name}`);
+    document.activeElement && document.activeElement.blur();
   }
   function endGame(won) {
     state = won ? 'won' : 'lost';
@@ -618,8 +655,12 @@
     openQuiz(0);
   }
   function togglePause() {
-    if (state === 'play' || state === 'quiz') { prevState = state; state = 'paused'; show('pause', true); }
-    else if (state === 'paused') { state = prevState; show('pause', false); }
+    if (state === 'play' || state === 'quiz') { prevState = state; state = 'paused'; show('pause', true); $('resume-btn').focus(); }
+    else if (state === 'paused') {
+      state = prevState; show('pause', false);
+      if (state === 'quiz') (quizSolved ? $('quiz-go') : [...$('quiz-options').children].find(b => !b.disabled) || $('quiz-go')).focus();
+      else document.activeElement && document.activeElement.blur();
+    }
   }
   function toMenu() { state = 'intro'; resetGame(); show('end', false); show('pause', false); show('quiz', false); show('intro', true); buildSpeeds(); }
 
@@ -633,8 +674,10 @@
   // ---------------- input ----------------
   const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', KeyA: 'left', KeyD: 'right', KeyW: 'up', KeyS: 'down' };
   addEventListener('keydown', (e) => {
+    // let focused buttons keep native Enter/Space activation
+    if (e.target instanceof HTMLButtonElement && (e.key === 'Enter' || e.code === 'Space')) return;
     const k = KEYMAP[e.code];
-    if (k || e.code === 'Space') e.preventDefault();
+    if (state === 'play' && (k || e.code === 'Space')) e.preventDefault();
     if (k) keys[k] = true;
     if (e.code === 'Space' && !e.repeat && state === 'play') jumpQueued = true;
     if (e.repeat) return;
@@ -649,6 +692,7 @@
     if (e.key === '-' || e.key === '_') cam.dist = clamp(cam.dist + 3, 8, 70);
   });
   addEventListener('keyup', (e) => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && (state === 'play' || state === 'quiz')) togglePause(); });
   addEventListener('blur', () => { for (const k in keys) keys[k] = false; if (state === 'play' || state === 'quiz') togglePause(); });
   view.addEventListener('wheel', (e) => { e.preventDefault(); cam.dist = clamp(cam.dist + Math.sign(e.deltaY) * 2, 8, 70); }, { passive: false });
   addEventListener('resize', resize);
@@ -657,14 +701,18 @@
   // ---------------- main loop ----------------
   let last = performance.now();
   function frame(now) {
-    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const raw = Math.max(0, (now - last) / 1000); last = now;
+    const dt = Math.min(0.05, raw);
     animT += dt;
     if (state === 'play' || state === 'quiz') {
-      timeLeft -= dt; elapsed += dt;
+      // the clock uses real elapsed time (capped at 1 s for tab stalls); physics is sub-stepped
+      const wall = Math.min(1, raw);
+      timeLeft -= wall; elapsed += wall;
       if (timeLeft <= 0) { timeLeft = 0; endGame(false); }
     }
     if (state === 'play') {
-      const ev = BW.stepPlayer(world, player, { left: keys.left, right: keys.right, up: keys.up, down: keys.down, jump: jumpQueued }, dt, speed.mps);
+      const ev = [], steps = Math.min(6, Math.ceil(Math.min(0.3, raw) / 0.05) || 1), sdt = Math.min(0.3, raw) / steps;
+      for (let i = 0; i < steps; i++) ev.push(...BW.stepPlayer(world, player, { left: keys.left, right: keys.right, up: keys.up, down: keys.down, jump: jumpQueued && i === 0 }, sdt, speed.mps));
       jumpQueued = false;
       for (const e of ev) {
         if (e.type === 'jump') blip(520, 0.09, 'square', 0.025);
@@ -687,6 +735,7 @@
     requestAnimationFrame(frame);
   }
 
+  buildCells();
   readPalette();
   resize();
   resetGame();

@@ -38,7 +38,7 @@
       background-image: linear-gradient(var(--bg-grid) 1px, transparent 1px), linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
       background-size: 32px 32px; -webkit-font-smoothing: antialiased; user-select: none;
     }
-    canvas#view { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+    canvas#view { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; display: block; }
     .panel {
       background: var(--panel); border: 1px solid var(--panel-border); border-radius: 14px;
       backdrop-filter: blur(10px) saturate(1.2); -webkit-backdrop-filter: blur(10px) saturate(1.2);
@@ -68,9 +68,9 @@
     #toast { position: fixed; z-index: 3; top: 22%; left: 50%; transform: translate(-50%, -8px); opacity: 0; transition: opacity .25s, transform .25s; padding: 10px 18px; font-weight: 600; pointer-events: none; }
     #toast.show { opacity: 1; transform: translate(-50%, 0); }
     #toast.bad { color: var(--bad); } #toast.ok { color: var(--ok); }
-    .overlay { position: fixed; inset: 0; z-index: 5; display: none; place-items: center; background: rgba(3, 5, 10, .55); padding: 20px; }
+    .overlay { position: fixed; inset: 0; z-index: 5; display: none; place-items: center; background: rgba(3, 5, 10, .55); padding: 20px; overflow-y: auto; }
     .overlay.show { display: grid; animation: fade .2s ease-out; }
-    .card { width: min(560px, 100%); padding: 26px 28px; }
+    .card { margin: auto; width: min(560px, 100%); padding: 26px 28px; }
     h1 { font-size: 30px; margin: 0 0 4px; letter-spacing: -.01em; }
     h1 .accent { color: var(--neon); text-shadow: 0 0 18px var(--neon); }
     h2 { font-size: 20px; margin: 4px 0 6px; }
@@ -115,7 +115,8 @@
 <body>
   <canvas id="view" aria-label="3D view of Bordeaux"></canvas>
 
-  <div id="hud-left" class="hud panel" aria-live="polite">
+  <div id="sr-live" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"></div>
+  <div id="hud-left" class="hud panel">
     <div class="label">Time left</div>
     <div id="timer">5:00</div>
     <div id="stops"><span></span><span></span><span></span><span></span></div>
@@ -137,7 +138,7 @@
 
   <div id="toast" class="panel"></div>
 
-  <div id="intro" class="overlay show" role="dialog" aria-labelledby="intro-title">
+  <div id="intro" class="overlay show" role="dialog" aria-modal="true" aria-labelledby="intro-title">
     <div class="card panel">
       <div class="label">A 3D city escape game</div>
       <h1 id="intro-title">Bordeaux <span class="accent">Escape</span></h1>
@@ -156,7 +157,7 @@
     </div>
   </div>
 
-  <div id="quiz" class="overlay" role="dialog" aria-labelledby="quiz-title">
+  <div id="quiz" class="overlay" role="dialog" aria-modal="true" aria-labelledby="quiz-title">
     <div class="card panel">
       <div class="label" id="quiz-stop"></div>
       <h2 id="quiz-title"></h2>
@@ -172,7 +173,7 @@
     </div>
   </div>
 
-  <div id="pause" class="overlay" role="dialog">
+  <div id="pause" class="overlay" role="dialog" aria-modal="true" aria-label="Paused">
     <div class="card panel" style="text-align:center">
       <h2>Paused</h2>
       <p class="muted">The clock is stopped.</p>
@@ -180,7 +181,7 @@
     </div>
   </div>
 
-  <div id="end" class="overlay" role="dialog" aria-labelledby="end-title">
+  <div id="end" class="overlay" role="dialog" aria-modal="true" aria-labelledby="end-title">
     <div class="card panel" style="text-align:center">
       <div class="label" id="end-label"></div>
       <h1 id="end-title"></h1>
