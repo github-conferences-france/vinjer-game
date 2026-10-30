@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Bordeaux Escape — a 3D city escape game</title>
+  <meta name="description" content="Race through Bordeaux in 3D: solve clues at four famous landmarks before the timer runs out.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2307090f'/><path d='M16 5 26 27H6z' fill='none' stroke='%2329f0ff' stroke-width='3'/></svg>">
+  <style>
+    :root {
+      --font: system-ui, -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+      --bg: #07090f; --bg-grid: rgba(41, 240, 255, .045);
+      --panel: rgba(10, 14, 24, .78); --panel-border: rgba(120, 200, 255, .16);
+      --text: #e6edf7; --muted: #8d99ae; --kbd: #1a2234;
+      --neon: #29f0ff; --neon-2: #ffd23f; --neon-3: #ff3df2; --ok: #3dff9a; --bad: #ff4d6d;
+      /* canvas palette */
+      --sky-0: #04060b; --sky-1: #0c1323; --ground: #070a11; --grid: #16304a;
+      --street: #161e2d; --street-edge: #22324c; --plaza: #1a2333; --river: #06182a;
+      --building: #283041; --building-edge: rgba(41, 240, 255, .10); --landmark: #4c4560; --fog: #0a101d;
+      color-scheme: dark;
+    }
+    /* Light preference: stay dark (per design) but lift contrast to a softer "dusk" palette. */
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #131a28; --bg-grid: rgba(120, 200, 255, .07);
+        --panel: rgba(26, 34, 52, .84); --panel-border: rgba(150, 200, 255, .22);
+        --text: #f2f6fc; --muted: #a9b5c9; --kbd: #2a3550;
+        --sky-0: #101828; --sky-1: #222e48; --ground: #111827; --grid: #2a4767;
+        --street: #232d43; --street-edge: #34466a; --plaza: #29344d; --river: #0c2540;
+        --building: #37425a; --building-edge: rgba(80, 220, 255, .14); --landmark: #5c5472; --fog: #1c2740;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; }
+    body {
+      font: 15px/1.5 var(--font); color: var(--text); background-color: var(--bg);
+      background-image: linear-gradient(var(--bg-grid) 1px, transparent 1px), linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+      background-size: 32px 32px; -webkit-font-smoothing: antialiased; user-select: none;
+    }
+    canvas#view { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+    .panel {
+      background: var(--panel); border: 1px solid var(--panel-border); border-radius: 14px;
+      backdrop-filter: blur(10px) saturate(1.2); -webkit-backdrop-filter: blur(10px) saturate(1.2);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+    }
+    .hud { position: fixed; z-index: 2; pointer-events: none; }
+    #hud-left { top: 16px; left: 16px; padding: 14px 16px; width: min(340px, calc(100vw - 280px)); }
+    #timer { font-size: 34px; font-weight: 700; letter-spacing: .02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    #timer.warn { color: var(--neon-2); }
+    #timer.crit { color: var(--bad); animation: pulse 1s infinite; }
+    .label { font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+    #stops { display: flex; gap: 6px; margin: 10px 0 8px; }
+    #stops span { flex: 1; height: 5px; border-radius: 3px; background: rgba(140, 160, 190, .25); }
+    #stops span.done { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    #stops span.active { background: var(--neon-3); box-shadow: 0 0 10px var(--neon-3); }
+    #objective { display: flex; align-items: center; gap: 12px; }
+    #objective .name { font-weight: 650; font-size: 16px; }
+    #objective .dist { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+    #arrow { width: 38px; height: 38px; flex: none; border-radius: 50%; border: 1px solid var(--panel-border); display: grid; place-items: center; }
+    #arrow svg { transition: transform .08s linear; filter: drop-shadow(0 0 5px var(--neon-3)); }
+    #hint { margin-top: 8px; font-size: 14px; color: var(--muted); }
+    #hud-right { top: 16px; right: 16px; padding: 10px; }
+    #hud-right .head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 2px 6px; }
+    #minimap { display: block; width: 200px; height: 280px; border-radius: 9px; }
+    #hud-bottom { left: 50%; bottom: 16px; transform: translateX(-50%); padding: 8px 14px; font-size: 14px; color: var(--muted); white-space: nowrap; }
+    kbd { font: 600 12px/1 var(--font); color: var(--text); background: var(--kbd); border: 1px solid var(--panel-border); border-bottom-width: 2px; border-radius: 5px; padding: 3px 6px; margin: 0 1px; }
+    #toast { position: fixed; z-index: 3; top: 22%; left: 50%; transform: translate(-50%, -8px); opacity: 0; transition: opacity .25s, transform .25s; padding: 10px 18px; font-weight: 600; pointer-events: none; }
+    #toast.show { opacity: 1; transform: translate(-50%, 0); }
+    #toast.bad { color: var(--bad); } #toast.ok { color: var(--ok); }
+    .overlay { position: fixed; inset: 0; z-index: 5; display: none; place-items: center; background: rgba(3, 5, 10, .55); padding: 20px; }
+    .overlay.show { display: grid; animation: fade .2s ease-out; }
+    .card { width: min(560px, 100%); padding: 26px 28px; }
+    h1 { font-size: 30px; margin: 0 0 4px; letter-spacing: -.01em; }
+    h1 .accent { color: var(--neon); text-shadow: 0 0 18px var(--neon); }
+    h2 { font-size: 20px; margin: 4px 0 6px; }
+    p { margin: 8px 0; }
+    .muted { color: var(--muted); }
+    .speeds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0 6px; }
+    .speed { text-align: left; }
+    .speed .t { display: block; font-weight: 650; font-size: 15px; }
+    .speed .s { display: block; font-size: 13px; color: var(--muted); }
+    button {
+      font: inherit; color: var(--text); background: rgba(140, 170, 210, .08); border: 1px solid var(--panel-border);
+      border-radius: 10px; padding: 10px 14px; cursor: pointer; transition: border-color .15s, background .15s, transform .05s;
+    }
+    button:hover { border-color: var(--neon); }
+    button:active { transform: translateY(1px); }
+    button:focus-visible { outline: 2px solid var(--neon); outline-offset: 2px; }
+    button[aria-pressed="true"] { border-color: var(--neon); background: rgba(41, 240, 255, .12); box-shadow: 0 0 0 1px var(--neon) inset; }
+    button.primary { background: var(--neon); color: #001318; border-color: transparent; font-weight: 700; box-shadow: 0 0 22px rgba(41, 240, 255, .45); }
+    .row { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-top: 18px; flex-wrap: wrap; }
+    .options { display: grid; gap: 8px; margin: 14px 0 4px; }
+    .options button { text-align: left; display: flex; gap: 10px; align-items: center; }
+    .options button.wrong { border-color: var(--bad); color: var(--bad); animation: shake .35s; opacity: .7; }
+    .options button.right { border-color: var(--ok); color: var(--ok); }
+    .reveal { display: none; margin-top: 12px; padding: 12px 14px; border-radius: 10px; border: 1px dashed var(--panel-border); }
+    .reveal.show { display: block; }
+    .next { color: var(--neon-3); font-weight: 700; }
+    .big { font-size: 44px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    ul.keys { padding-left: 18px; margin: 8px 0; color: var(--muted); font-size: 14px; }
+    @keyframes pulse { 50% { opacity: .55; } }
+    @keyframes fade { from { opacity: 0; } }
+    @keyframes shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+    @media (max-width: 720px) {
+      #minimap { width: 130px; height: 182px; }
+      #hud-left { width: calc(100vw - 190px); padding: 10px 12px; }
+      #timer { font-size: 26px; } #hint { display: none; }
+      #hud-bottom { display: none; }
+      .speeds { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <canvas id="view" aria-label="3D view of Bordeaux"></canvas>
+
+  <div id="hud-left" class="hud panel" aria-live="polite">
+    <div class="label">Time left</div>
+    <div id="timer">5:00</div>
+    <div id="stops"><span></span><span></span><span></span><span></span></div>
+    <div id="objective">
+      <div id="arrow"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 2 20 21 12 16 4 21z" fill="var(--neon-3)"/></svg></div>
+      <div><div class="name" id="obj-name">Solve the first clue</div><div class="dist" id="obj-dist">—</div></div>
+    </div>
+    <div id="hint"></div>
+  </div>
+
+  <div id="hud-right" class="hud panel">
+    <div class="head"><span class="label">Bordeaux</span><span class="label">N ↑</span></div>
+    <canvas id="minimap" width="200" height="280"></canvas>
+  </div>
+
+  <div id="hud-bottom" class="hud panel">
+    <kbd>←</kbd><kbd>→</kbd> turn · <kbd>↑</kbd><kbd>↓</kbd> walk · <kbd>Space</kbd> jump · <kbd>+</kbd><kbd>−</kbd> zoom · <kbd>P</kbd> pause
+  </div>
+
+  <div id="toast" class="panel"></div>
+
+  <div id="intro" class="overlay show" role="dialog" aria-labelledby="intro-title">
+    <div class="card panel">
+      <div class="label">A 3D city escape game</div>
+      <h1 id="intro-title">Bordeaux <span class="accent">Escape</span></h1>
+      <p>You start at <b>Place de la Victoire</b>. Solve a clue at each stop to unlock the next of <b>four famous Bordeaux landmarks</b>. Reach the last one before the clock hits zero.</p>
+      <ul class="keys">
+        <li><kbd>←</kbd> <kbd>→</kbd> turn, <kbd>↑</kbd> <kbd>↓</kbd> walk — you can only move along streets</li>
+        <li><kbd>Space</kbd> jump over the neon barriers blocking the way</li>
+        <li><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> answer clues — wrong answers cost 15 s</li>
+      </ul>
+      <div class="label" style="margin-top:14px">Pace · 5:00 on the clock</div>
+      <div class="speeds" id="speeds"></div>
+      <div class="row">
+        <span class="muted" id="route-info"></span>
+        <button class="primary" id="start-btn">Start <kbd>Enter</kbd></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="quiz" class="overlay" role="dialog" aria-labelledby="quiz-title">
+    <div class="card panel">
+      <div class="label" id="quiz-stop"></div>
+      <h2 id="quiz-title"></h2>
+      <p class="muted" id="quiz-blurb"></p>
+      <p id="quiz-q"></p>
+      <div class="options" id="quiz-options"></div>
+      <div class="reveal" id="quiz-reveal">
+        <p id="quiz-fact" class="muted"></p>
+        <p>Next destination: <span class="next" id="quiz-next"></span></p>
+        <p class="muted" id="quiz-hint"></p>
+        <div class="row" style="justify-content:flex-end;margin-top:8px"><button class="primary" id="quiz-go">Go! <kbd>Enter</kbd></button></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="pause" class="overlay" role="dialog">
+    <div class="card panel" style="text-align:center">
+      <h2>Paused</h2>
+      <p class="muted">The clock is stopped.</p>
+      <div class="row" style="justify-content:center"><button class="primary" id="resume-btn">Resume <kbd>P</kbd></button><button id="quit-btn">Restart <kbd>R</kbd></button></div>
+    </div>
+  </div>
+
+  <div id="end" class="overlay" role="dialog" aria-labelledby="end-title">
+    <div class="card panel" style="text-align:center">
+      <div class="label" id="end-label"></div>
+      <h1 id="end-title"></h1>
+      <div class="big" id="end-time"></div>
+      <p class="muted" id="end-text"></p>
+      <div class="row" style="justify-content:center"><button class="primary" id="again-btn">Play again <kbd>Enter</kbd></button><button id="menu-btn">Change pace</button></div>
+    </div>
+  </div>
+
+  <script src="js/world.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

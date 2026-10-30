@@ -17,6 +17,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax check
+        run: node --check js/world.js && node --check js/game.js
+      - name: Game logic tests (map, physics, feasibility per pace)
+        run: node --test tests/*.test.js
       - name: Check static site
         run: |
           if [ -f index.html ]; then
