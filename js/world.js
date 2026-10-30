@@ -11,6 +11,13 @@
   const TURN_RATE = 2.6; // rad/s
   const TIME_LIMIT = 300; // seconds
   const ARRIVE_R = 14;
+  const SPRINT_MULT = 1.5; // hold Shift
+  const STUMBLE_TIME = 2; // seconds slowed after hitting something
+  const STUMBLE_MULT = 0.5;
+  const TRAM_LINES = [ // real Bordeaux tram corridors (lines A and B/C)
+    { street: "Cours d'Alsace-Lorraine", count: 1, speed: 8 },
+    { street: 'Quai Richelieu', count: 3, speed: 9 },
+  ];
 
   const NODES = {
     V: [8, -674], // Place de la Victoire
@@ -55,7 +62,7 @@
 
   const PLACES = [
     {
-      id: 'victoire', node: 'V', name: 'Place de la Victoire',
+      id: 'victoire', photo: { src: 'assets/places/victoire.jpg', credit: 'Porte d’Aquitaine, Place de la Victoire — Fran Roy, CC BY-SA 4.0', url: 'https://commons.wikimedia.org/wiki/File:Porte_d%27Aquitaine_et_rue_Sainte-Catherine_au_fond.jpg' }, node: 'V', name: 'Place de la Victoire',
       blurb: 'Start line, by the Porte d’Aquitaine.',
       clue: {
         q: 'Warm-up! What is Bordeaux’s iconic little pastry — caramelised crust, custardy heart, scented with rum and vanilla?',
@@ -65,7 +72,7 @@
       hint: 'Head north on Rue Sainte-Catherine, then east on Cours Victor Hugo to the medieval gate with a giant bell.',
     },
     {
-      id: 'cloche', node: 'GC', name: 'La Grosse Cloche',
+      id: 'cloche', photo: { src: 'assets/places/cloche.jpg', credit: 'La Grosse Cloche — Grand Parc Bordeaux, CC BY 2.0', url: 'https://commons.wikimedia.org/wiki/File:Bordeaux_-_La_Grosse_Cloche-cr.jpg' }, node: 'GC', name: 'La Grosse Cloche',
       blurb: '15th-century belfry gate of the old town hall.',
       clue: {
         q: 'This bell once announced the start of the grape harvest. Which river makes Bordeaux the “Port of the Moon”?',
@@ -75,7 +82,7 @@
       hint: 'Go north up Rue Saint-James, then west along Cours d’Alsace-Lorraine to the cathedral and its detached bell tower.',
     },
     {
-      id: 'cathedrale', node: 'PB', name: 'Cathédrale Saint-André',
+      id: 'cathedrale', photo: { src: 'assets/places/cathedrale.jpg', credit: 'Cathédrale Saint-André — Chabe01, CC BY-SA 4.0', url: 'https://commons.wikimedia.org/wiki/File:Cath%C3%A9drale_St_Andr%C3%A9_Bordeaux_3.jpg' }, node: 'PB', name: 'Cathédrale Saint-André',
       blurb: 'Gothic cathedral beside the Tour Pey-Berland.',
       clue: {
         q: 'In 1137 a future queen of France — and later of England — married here. Who?',
@@ -85,7 +92,7 @@
       hint: 'Head north up Rue Vital-Carles, then east along Cours de l’Intendance to Place de la Comédie.',
     },
     {
-      id: 'theatre', node: 'PC', name: 'Grand Théâtre',
+      id: 'theatre', photo: { src: 'assets/places/theatre.jpg', credit: 'Grand Théâtre — Monster1000, CC BY-SA 3.0', url: 'https://commons.wikimedia.org/wiki/File:GrandTheatreBordeaux2.jpg' }, node: 'PC', name: 'Grand Théâtre',
       blurb: 'Neoclassical opera house (1780).',
       clue: {
         q: 'Count them! How many Corinthian columns line the Grand Théâtre’s portico?',
@@ -95,7 +102,7 @@
       hint: 'Final run: east down Cours du Chapeau-Rouge to the river, then south to the Miroir d’eau.',
     },
     {
-      id: 'miroir', node: 'MI', name: 'Miroir d’eau',
+      id: 'miroir', photo: { src: 'assets/places/miroir.jpg', credit: 'Miroir d’eau — Olivier Aumage, CC BY-SA 2.5', url: 'https://commons.wikimedia.org/wiki/File:Bordeaux_Miroir_001.jpg' }, node: 'MI', name: 'Miroir d’eau',
       blurb: 'The world’s largest reflecting pool, facing Place de la Bourse.',
       final: true,
     },
@@ -260,7 +267,9 @@
     // Obstacles: barriers spanning the full street width, away from junctions/plazas.
     const obstacles = [];
     const placeNodes = PLACES.map(p => p.node);
+    const tramStreets = new Set(TRAM_LINES.map(l => l.street));
     for (const s of segs) {
+      if (tramStreets.has(s.street)) continue;
       const usable = s.len - 2 * 26;
       if (usable < 20) continue;
       const count = Math.max(1, Math.floor(usable / 75));
@@ -282,8 +291,50 @@
       }
     }
 
+    // Roadworks: tall (unjumpable) blocks covering one half of the street — steer around them.
+    const hazards = [];
+    const WORKS_W = HW + 1; // covers the kerb side and 1 m past the centreline
+    for (const s of segs) {
+      if (tramStreets.has(s.street)) continue;
+      const usable = s.len - 2 * 30;
+      if (usable < 30) continue;
+      const count = Math.max(1, Math.floor(usable / 130));
+      for (let i = 0; i < count; i++) {
+        if (rng() < 0.35) continue;
+        const t = 30 + (usable / count) * (i + 0.2 + rng() * 0.6);
+        const cx = s.ax + s.dx * t, cz = s.az + s.dz * t;
+        let clash = false;
+        for (const o of segs) {
+          if (o === s) continue;
+          if (distToSeg(cx, cz, o.ax, o.az, o.bx, o.bz) < HW * 2 + 6) { clash = true; break; }
+        }
+        if (!clash) for (const p of plazas) if (Math.hypot(cx - p.x, cz - p.z) < p.r + HW + 8) { clash = true; break; }
+        if (!clash) for (const k of placeNodes) if (Math.hypot(cx - nodes[k].x, cz - nodes[k].z) < 45) { clash = true; break; }
+        if (!clash) for (const o of obstacles) if (Math.hypot(cx - o.x, cz - o.z) < 22) { clash = true; break; }
+        if (clash) continue;
+        const side = rng() < 0.5 ? -1 : 1;
+        const latC = side * (HW - WORKS_W / 2); // lateral centre of the block
+        hazards.push({ kind: 'works', x: cx + -s.dz * latC, z: cz + s.dx * latC, dx: s.dx, dz: s.dz,
+          hl: 2, hw: WORKS_W / 2, h: 2.4, lineX: cx, lineZ: cz, gapLat: -side * (WORKS_W - HW + (HW - (WORKS_W - HW)) / 2) });
+      }
+    }
+
+    // Trams ping-pong along real tram streets, driving on the right-hand lane.
+    const trams = [];
+    for (const line of TRAM_LINES) {
+      const st = STREETS.find(x => x.name === line.street);
+      const pts = st.path.map(k => nodes[k]);
+      const cum = [0];
+      for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
+      const len = cum[cum.length - 1];
+      for (let i = 0; i < line.count; i++) {
+        trams.push({ kind: 'tram', pts, cum, len, speed: line.speed, phase: (i + 0.3) / line.count * 2 * (len - 80),
+          hl: 13, hw: 1.3, h: 3.4, lane: 2.9, x: pts[0].x, z: pts[0].z, dx: 1, dz: 0 });
+      }
+    }
+
     return {
-      HW, nodes, segs, adj, plazas, river, quay, quayX, buildings, obstacles, landmarkRects,
+      HW, nodes, segs, adj, plazas, river, quay, quayX, buildings, obstacles, landmarkRects, hazards, trams,
       places: PLACES, streets: STREETS,
       inStreet, inPlaza, isWalkable, nearestSeg,
       bounds: { x0: -720, x1: 620, z0: -860, z1: 1060 },
@@ -323,12 +374,48 @@
   // ---------- player physics ----------
   function createPlayer(world) {
     const v = world.nodes.V;
-    return { x: v.x, z: v.z - 10, y: 0, vy: 0, heading: 0, onGround: true, moving: false };
+    return { x: v.x, z: v.z - 10, y: 0, vy: 0, heading: 0, onGround: true, moving: false, sprinting: false, stumble: 0 };
   }
 
   function obstacleLocal(o, x, z) {
     const rx = x - o.x, rz = z - o.z;
     return { along: rx * o.dx + rz * o.dz, lat: rx * -o.dz + rz * o.dx };
+  }
+
+  // Move trams to their position at time t (seconds since start).
+  function updateTrams(world, t) {
+    for (const tr of world.trams) {
+      const span = tr.len - 80, period = 2 * span;
+      let u = (tr.phase + t * tr.speed) % period;
+      const back = u > span;
+      const d = 40 + (back ? period - u : u);
+      let i = 1;
+      while (i < tr.cum.length - 1 && tr.cum[i] < d) i++;
+      const a = tr.pts[i - 1], b = tr.pts[i], sl = tr.cum[i] - tr.cum[i - 1];
+      const k = (d - tr.cum[i - 1]) / sl;
+      const fdx = (b.x - a.x) / sl, fdz = (b.z - a.z) / sl;
+      // right-hand lane relative to travel direction (x = east, z = north → right = (dz, -dx)),
+      // eased to the centreline near each terminus so the lane swap at turnaround is continuous
+      const ramp = Math.min(1, Math.min(d - 40, tr.len - 40 - d) / 15);
+      const off = (back ? -1 : 1) * tr.lane * ramp;
+      tr.x = a.x + (b.x - a.x) * k + fdz * off;
+      tr.z = a.z + (b.z - a.z) * k - fdx * off;
+      tr.dx = back ? -fdx : fdx; tr.dz = back ? -fdz : fdz;
+    }
+  }
+  function boxLocal(o, x, z) {
+    const rx = x - o.x, rz = z - o.z;
+    return { along: rx * o.dx + rz * o.dz, lat: rx * -o.dz + rz * o.dx };
+  }
+  function inBox(o, x, z, pad) {
+    if (Math.abs(x - o.x) > o.hl + 4 || Math.abs(z - o.z) > o.hl + 4) return false;
+    const l = boxLocal(o, x, z);
+    return Math.abs(l.along) < o.hl + pad && Math.abs(l.lat) < o.hw + pad;
+  }
+  function hazardAt(world, x, z) {
+    for (const h of world.hazards) if (inBox(h, x, z, PLAYER_R)) return h;
+    for (const h of world.trams) if (inBox(h, x, z, PLAYER_R)) return h;
+    return null;
   }
 
   function groundHeight(world, x, z) {
@@ -354,9 +441,16 @@
     return null;
   }
 
-  // input: {left,right,up,down,jump}; jump is edge-triggered by the caller.
+  // input: {left,right,up,down,jump,sprint}; jump is edge-triggered by the caller.
   function stepPlayer(world, p, input, dt, speed) {
     const events = [];
+    if (p.stumble > 0) p.stumble = Math.max(0, p.stumble - dt);
+    const stumble = (why, by) => {
+      if (!(p.stumble > 0)) events.push({ type: 'stumble', why, by });
+      p.stumble = STUMBLE_TIME;
+    };
+    p.sprinting = !!(input.sprint && input.up && !input.down && !(p.stumble > 0));
+    speed *= p.stumble > 0 ? STUMBLE_MULT : p.sprinting ? SPRINT_MULT : 1;
     if (input.left) p.heading -= TURN_RATE * dt;
     if (input.right) p.heading += TURN_RATE * dt;
     const dir = (input.up ? 1 : 0) - (input.down ? 0.6 : 0);
@@ -377,13 +471,35 @@
         }
       }
       cands.push([p.x + fx * step, p.z], [p.x, p.z + fz * step]);
-      for (const [nx, nz] of cands) {
+      for (let ci = 0; ci < cands.length; ci++) {
+        const [nx, nz] = cands[ci];
         if (!world.isWalkable(nx, nz)) continue;
+        const hz = hazardAt(world, nx, nz);
+        if (hz && !hazardAt(world, p.x, p.z)) {
+          if (ci === 0) { events.push({ type: 'hit', hazard: hz }); if (p.sprinting || hz.kind === 'tram') stumble(hz.kind, hz); }
+          continue; // try sliding past it
+        }
         const ob = blockedByObstacle(world, p, nx, nz);
-        if (ob) { events.push({ type: 'bump', obstacle: ob }); break; }
+        if (ob) {
+          events.push({ type: 'bump', obstacle: ob });
+          if (p.sprinting && !input.jump) stumble('barrier', ob);
+          break;
+        }
         p.x = nx; p.z = nz; p.moving = true;
         break;
       }
+    }
+    // A tram driving into the player shoves them sideways out of its path.
+    for (const tr of world.trams) {
+      if (!inBox(tr, p.x, p.z, PLAYER_R)) continue;
+      const l = boxLocal(tr, p.x, p.z);
+      const off = tr.hw + PLAYER_R + 0.15;
+      for (const side of [Math.sign(l.lat) || 1, -(Math.sign(l.lat) || 1)]) {
+        const nx = tr.x + tr.dx * l.along + -tr.dz * side * off, nz = tr.z + tr.dz * l.along + tr.dx * side * off;
+        if (world.isWalkable(nx, nz)) { p.x = nx; p.z = nz; break; }
+      }
+      events.push({ type: 'hit', hazard: tr });
+      stumble('tram', tr);
     }
     const g = groundHeight(world, p.x, p.z);
     if (input.jump && p.onGround) { p.vy = JUMP_V; p.onGround = false; events.push({ type: 'jump' }); }
@@ -399,8 +515,8 @@
   }
 
   const api = {
-    HW, PLAYER_R, TIME_LIMIT, ARRIVE_R, TURN_RATE, JUMP_V, GRAVITY,
-    createWorld, shortestPath, routeLength, createPlayer, stepPlayer, distToSeg, obstacleLocal,
+    HW, PLAYER_R, TIME_LIMIT, ARRIVE_R, TURN_RATE, JUMP_V, GRAVITY, SPRINT_MULT, STUMBLE_TIME, STUMBLE_MULT,
+    createWorld, shortestPath, routeLength, createPlayer, stepPlayer, updateTrams, hazardAt, distToSeg, obstacleLocal,
     SPEEDS: [
       { id: 'stroll', label: 'Stroll', mps: 11, note: 'Hard' },
       { id: 'jog', label: 'Jog', mps: 14, note: 'Normal', default: true },

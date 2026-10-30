@@ -13,7 +13,7 @@
       --bg: #07090f; --bg-grid: rgba(41, 240, 255, .045);
       --panel: rgba(10, 14, 24, .78); --panel-border: rgba(120, 200, 255, .16);
       --text: #e6edf7; --muted: #8d99ae; --kbd: #1a2234;
-      --neon: #29f0ff; --neon-2: #ffd23f; --neon-3: #ff3df2; --ok: #3dff9a; --bad: #ff4d6d;
+      --neon: #29f0ff; --neon-2: #ffd23f; --neon-3: #ff3df2; --ok: #3dff9a; --bad: #ff4d6d; --hazard: #ff8a1f; --tram: #b6ff3d;
       /* canvas palette */
       --sky-0: #04060b; --sky-1: #0c1323; --ground: #070a11; --grid: #16304a;
       --street: #161e2d; --street-edge: #22324c; --plaza: #1a2333; --river: #06182a;
@@ -59,6 +59,19 @@
     #objective .dist { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
     #arrow { width: 38px; height: 38px; flex: none; border-radius: 50%; border: 1px solid var(--panel-border); display: grid; place-items: center; }
     #arrow svg { transition: transform .08s linear; filter: drop-shadow(0 0 5px var(--neon-3)); }
+    #status { display: inline-block; margin-top: 2px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+    #status.sprint { color: var(--neon); text-shadow: 0 0 8px var(--neon); }
+    #status.stumble { color: var(--hazard); text-shadow: 0 0 8px var(--hazard); animation: pulse .5s infinite; }
+    #obj-img { width: 52px; height: 52px; margin-left: auto; flex: none; border-radius: 10px; object-fit: cover; border: 1px solid var(--neon-3); box-shadow: 0 0 12px rgba(255, 61, 242, .35); }
+    .photo { position: relative; margin: -26px -28px 16px; height: 200px; border-radius: 14px 14px 0 0; overflow: hidden; background: #0b1120; }
+    .photo img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 35%; display: block; }
+    .photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 55%, rgba(5, 8, 14, .85)); pointer-events: none; }
+    .photo a { position: absolute; z-index: 1; right: 10px; bottom: 6px; font-size: 11px; color: rgba(230, 237, 247, .75); text-decoration: none; }
+    .photo a:hover { text-decoration: underline; }
+    .route { display: flex; gap: 8px; margin: 12px 0 4px; }
+    .route figure { margin: 0; flex: 1; text-align: center; font-size: 12px; color: var(--muted); }
+    .route img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; border: 1px solid var(--panel-border); filter: grayscale(1) blur(3px) brightness(.6); }
+    .route .known img { filter: none; border-color: var(--neon); }
     #hint { margin-top: 8px; font-size: 14px; color: var(--muted); }
     #hud-right { top: 16px; right: 16px; padding: 10px; }
     #hud-right .head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 2px 6px; }
@@ -108,6 +121,7 @@
       #timer { font-size: 26px; } #hint { display: none; }
       #hud-bottom { display: none; }
       .speeds { grid-template-columns: 1fr; }
+      .photo { height: 140px; } #obj-img { display: none; }
     }
     @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   </style>
@@ -119,10 +133,12 @@
   <div id="hud-left" class="hud panel">
     <div class="label">Time left</div>
     <div id="timer">5:00</div>
+    <div id="status">Shift to sprint</div>
     <div id="stops"><span></span><span></span><span></span><span></span></div>
     <div id="objective">
       <div id="arrow"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 2 20 21 12 16 4 21z" fill="var(--neon-3)"/></svg></div>
       <div><div class="name" id="obj-name">Solve the first clue</div><div class="dist" id="obj-dist">—</div></div>
+      <img id="obj-img" alt="" hidden>
     </div>
     <div id="hint"></div>
   </div>
@@ -133,7 +149,7 @@
   </div>
 
   <div id="hud-bottom" class="hud panel">
-    <kbd>←</kbd><kbd>→</kbd> turn · <kbd>↑</kbd><kbd>↓</kbd> walk · <kbd>Space</kbd> jump · <kbd>+</kbd><kbd>−</kbd> zoom · <kbd>P</kbd> pause
+    <kbd>←</kbd><kbd>→</kbd> turn · <kbd>↑</kbd><kbd>↓</kbd> walk · <kbd>Shift</kbd> sprint · <kbd>Space</kbd> jump · <kbd>+</kbd><kbd>−</kbd> zoom · <kbd>P</kbd> pause
   </div>
 
   <div id="toast" class="panel"></div>
@@ -145,9 +161,12 @@
       <p>You start at <b>Place de la Victoire</b>. Solve a clue at each stop to unlock the next of <b>four famous Bordeaux landmarks</b>. Reach the last one before the clock hits zero.</p>
       <ul class="keys">
         <li><kbd>←</kbd> <kbd>→</kbd> turn, <kbd>↑</kbd> <kbd>↓</kbd> walk — you can only move along streets</li>
-        <li><kbd>Space</kbd> jump over the neon barriers blocking the way</li>
+        <li><kbd>Shift</kbd> sprint — but hit anything and you stumble, slowed down for 2 s (trams hit anyone)</li>
+        <li><kbd>Space</kbd> jump the <span style="color:var(--neon-3)">pink barriers</span>; steer around <span style="color:var(--hazard)">orange roadworks</span> and <span style="color:var(--tram)">trams</span></li>
         <li><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> answer clues — wrong answers cost 15 s</li>
       </ul>
+      <div class="label" style="margin-top:14px">Your route</div>
+      <div class="route" id="route"></div>
       <div class="label" style="margin-top:14px">Pace · 5:00 on the clock</div>
       <div class="speeds" id="speeds"></div>
       <div class="row">
@@ -159,6 +178,7 @@
 
   <div id="quiz" class="overlay" role="dialog" aria-modal="true" aria-labelledby="quiz-title">
     <div class="card panel">
+      <figure class="photo"><img id="quiz-img" alt=""><a id="quiz-credit" target="_blank" rel="noopener"></a></figure>
       <div class="label" id="quiz-stop"></div>
       <h2 id="quiz-title"></h2>
       <p class="muted" id="quiz-blurb"></p>
@@ -183,6 +203,7 @@
 
   <div id="end" class="overlay" role="dialog" aria-modal="true" aria-labelledby="end-title">
     <div class="card panel" style="text-align:center">
+      <figure class="photo" id="end-photo" hidden><img id="end-img" alt=""><a id="end-credit" target="_blank" rel="noopener"></a></figure>
       <div class="label" id="end-label"></div>
       <h1 id="end-title"></h1>
       <div class="big" id="end-time"></div>

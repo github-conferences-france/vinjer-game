@@ -32,9 +32,11 @@
       sky0: g('--sky-0'), sky1: g('--sky-1'), ground: g('--ground'), grid: g('--grid'),
       street: g('--street'), streetEdge: g('--street-edge'), plaza: g('--plaza'), river: g('--river'),
       edge: g('--building-edge'), neon: g('--neon'), neon2: g('--neon-2'), neon3: g('--neon-3'), ok: g('--ok'),
+      hazard: g('--hazard'), tram: g('--tram'),
       rgb: {
         bld: hexToRgb(g('--building')), stone: hexToRgb(g('--landmark')), fog: hexToRgb(g('--fog')),
         neon: hexToRgb(g('--neon')), neon2: hexToRgb(g('--neon-2')), neon3: hexToRgb(g('--neon-3')),
+        hazard: hexToRgb(g('--hazard')), tram: hexToRgb(g('--tram')),
         white: [235, 250, 255], dark: [10, 20, 30],
       },
     };
@@ -160,6 +162,22 @@
         prism([corner(-t, l0), corner(t, l0), corner(t, l1), corner(-t, l1)], 0, o.h - (i % 2) * 0.15, 'neon3', 0.6 + (i % 2) * 0.25, { glow: 'neon3', edge: true });
       }
     }
+  }
+
+  // roadworks (static, orange, too tall to jump)
+  for (const hz of world.hazards) {
+    const px = -hz.dz, pz = hz.dx;
+    const corner = (a, l) => [hz.x + hz.dx * a + px * l, hz.z + hz.dz * a + pz * l];
+    const quad = (a0, a1, l0, l1) => [corner(a0, l0), corner(a1, l0), corner(a1, l1), corner(a0, l1)];
+    const n = 3, w = 2 * hz.hw / n;
+    for (let i = 0; i < n; i++) {
+      const l0 = -hz.hw + w * i + 0.1, l1 = l0 + w - 0.2;
+      prism(quad(-0.5, 0.5, l0, l1), 0, 1.1, i % 2 ? 'white' : 'hazard', i % 2 ? 0.55 : 0.7, { glow: 'hazard', edge: true });
+    }
+    for (const a of [-hz.hl + 0.2, hz.hl - 0.2]) for (const l of [-hz.hw + 0.2, hz.hw - 0.2]) {
+      prism(quad(a - 0.12, a + 0.12, l - 0.12, l + 0.12), 0, hz.h, 'hazard', 0.6, { edge: true });
+    }
+    for (const a of [-hz.hl + 0.2, hz.hl - 0.2]) prism(quad(a - 0.1, a + 0.1, -hz.hw, hz.hw), hz.h - 0.55, hz.h, 'hazard', 1, { glow: 'hazard', edge: true });
   }
 
   // ground layers (drawn first, in order, no sorting)
@@ -361,12 +379,33 @@
     const local = (a, l) => [p.x + sh * a + ch * l, p.z + ch * a - sh * l];
     const boxL = (a0, a1, l0, l1, y0, y1, base, k, glow) =>
       prism([local(a0 * S, l0 * S), local(a1 * S, l0 * S), local(a1 * S, l1 * S), local(a0 * S, l1 * S)], p.y + y0 * S, p.y + y1 * S, base, k, { list, glow, edge: true });
-    const swing = p.moving && p.onGround ? Math.sin(animT * 14) * 0.18 : 0;
+    const swing = p.moving && p.onGround ? Math.sin(animT * (p.sprinting ? 22 : 14)) * (p.sprinting ? 0.28 : 0.18) : 0;
     boxL(-0.12 + swing, 0.12 + swing, -0.3, -0.06, 0, 0.75, 'neon', 0.6, 'neon');
     boxL(-0.12 - swing, 0.12 - swing, 0.06, 0.3, 0, 0.75, 'neon', 0.6, 'neon');
     boxL(-0.2, 0.2, -0.36, 0.36, 0.72, 1.4, 'neon', 0.95, 'neon');
     boxL(-0.17, 0.17, -0.17, 0.17, 1.44, 1.8, 'neon', 1.05, 'neon');
     boxL(0.15, 0.2, -0.13, 0.13, 1.56, 1.68, 'white', 1.2, 'neon');
+    return list;
+  }
+
+  function tramFaces() {
+    const list = [];
+    for (const tr of world.trams) {
+      if (Math.hypot(tr.x - cam.x, tr.z - cam.z) > FAR + 20) continue;
+      const px = -tr.dz, pz = tr.dx;
+      const corner = (a, l) => [tr.x + tr.dx * a + px * l, tr.z + tr.dz * a + pz * l];
+      const quad = (a0, a1, l0, l1) => [corner(a0, l0), corner(a1, l0), corner(a1, l1), corner(a0, l1)];
+      const cars = 3, cl = 2 * tr.hl / cars;
+      for (let i = 0; i < cars; i++) {
+        const a0 = -tr.hl + cl * i + 0.2, a1 = a0 + cl - 0.4;
+        const ft = quad(a0, a1, -tr.hw, tr.hw);
+        prism(ft, 0.25, 1.5, 'bld', 1.25, { list, edge: true });
+        prism(ft, 1.5, 2.5, 'tram', 0.85, { list, glow: 'tram', edge: true });
+        prism(ft, 2.5, 3.1, 'bld', 1.1, { list, edge: true });
+      }
+      // pantograph
+      prism(quad(-0.6, 0.6, -0.15, 0.15), 3.1, tr.h, 'tram', 1, { list, glow: 'tram' });
+    }
     return list;
   }
 
@@ -391,6 +430,7 @@
     // solids
     drawList.length = 0;
     collectCells();
+    collect(tramFaces());
     collect(playerFaces());
     drawList.sort((a, b) => b.depth - a.depth);
     ctx.lineJoin = 'round';
@@ -491,6 +531,8 @@
     c.globalAlpha = 1;
     c.fillStyle = rgbStr(PAL.rgb.neon3, 0.9);
     for (const o of world.obstacles) { const a = mmXY(o.x, o.z); c.fillRect(a[0] - 1, a[1] - 1, 2, 2); }
+    c.fillStyle = PAL.hazard;
+    for (const h of world.hazards) { const a = mmXY(h.x, h.z); c.fillRect(a[0] - 1.5, a[1] - 1.5, 3, 3); }
   }
   function drawMinimap() {
     if (!mmBase) return;
@@ -507,6 +549,11 @@
         mctx.fillStyle = PAL.neon3; mctx.beginPath(); mctx.arc(a[0], a[1], 2.5 * k, 0, TAU); mctx.fill();
       }
     });
+    mctx.strokeStyle = PAL.tram; mctx.lineWidth = 3 * k; mctx.lineCap = 'round';
+    for (const tr of world.trams) {
+      const a = mmXY(tr.x - tr.dx * tr.hl, tr.z - tr.dz * tr.hl), b = mmXY(tr.x + tr.dx * tr.hl, tr.z + tr.dz * tr.hl);
+      mctx.beginPath(); mctx.moveTo(a[0], a[1]); mctx.lineTo(b[0], b[1]); mctx.stroke();
+    }
     const p = mmXY(player.x, player.z);
     mctx.save(); mctx.translate(p[0], p[1]); mctx.rotate(player.heading);
     mctx.fillStyle = rgbStr(PAL.rgb.neon, 0.14);
@@ -518,6 +565,7 @@
   }
 
   // ---------------- HUD ----------------
+  const elStatus = $('status'), elObjImg = $('obj-img');
   const elTimer = $('timer'), elName = $('obj-name'), elDist = $('obj-dist'), elHint = $('hint'), elArrow = $('arrow').firstElementChild;
   function fmt(t) { t = Math.max(0, Math.ceil(t)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; }
   function updateStops() {
@@ -536,18 +584,23 @@
     if (elTimer.className !== cls) elTimer.className = cls;
     for (const w of [60, 30]) if (lastWarn > w && timeLeft <= w && (state === 'play' || state === 'quiz')) announce(`${w} seconds left`);
     lastWarn = timeLeft;
+    const st = player.stumble > 0 ? 'stumble' : player.sprinting ? 'sprint' : '';
+    if (hudCache.status !== st) {
+      hudCache.status = st; elStatus.className = st;
+      elStatus.textContent = st === 'stumble' ? 'Stumbled · slowed' : st === 'sprint' ? 'Sprinting' : 'Shift to sprint';
+    }
     const t = currentTarget();
     if (t) {
       const n = world.nodes[t.node];
       const d = Math.hypot(n.x - player.x, n.z - player.z);
       const key = t.id;
-      if (key !== lastHud) { elName.textContent = t.name; elHint.textContent = world.places[stage - 1].hint; lastHud = key; }
+      if (key !== lastHud) { elName.textContent = t.name; elHint.textContent = world.places[stage - 1].hint; lastHud = key; elObjImg.src = t.photo.src; elObjImg.alt = ''; elObjImg.hidden = false; }
       setText(elDist, `${Math.round(d / 5) * 5} m · stop ${stage}/4`);
       const rel = angleDiff(player.heading, Math.atan2(n.x - player.x, n.z - player.z));
       const tr = `rotate(${rel.toFixed(2)}rad)`;
       if (hudCache.arrow !== tr) { hudCache.arrow = tr; elArrow.style.transform = tr; }
     } else if (lastHud !== 'none') {
-      elName.textContent = 'Solve the first clue'; setText(elDist, 'Place de la Victoire'); elHint.textContent = ''; lastHud = 'none';
+      elName.textContent = 'Solve the first clue'; setText(elDist, 'Place de la Victoire'); elHint.textContent = ''; lastHud = 'none'; elObjImg.hidden = true;
     }
   }
   let toastTimer = 0;
@@ -583,12 +636,30 @@
     $('route-info').textContent = `Shortest route ≈ ${(route.total / 1000).toFixed(1)} km · ~${fmt(route.total / speed.mps)} of pure running`;
   }
 
+  function setPhoto(prefix, pl) {
+    const img = $(prefix + '-img'), cr = $(prefix + '-credit');
+    img.src = pl.photo.src; img.alt = 'Photo: ' + pl.name;
+    cr.textContent = pl.photo.credit; cr.href = pl.photo.url;
+  }
+  function buildRoute() {
+    const wrap = $('route'); wrap.innerHTML = '';
+    world.places.forEach((pl, i) => {
+      const f = document.createElement('figure');
+      f.innerHTML = `<img alt="" src="${pl.photo.src}"><figcaption></figcaption>`;
+      f.lastChild.textContent = i === 0 ? 'Start' : i === world.places.length - 1 ? 'Finish' : '?';
+      f.title = i === 0 ? pl.name : 'Solve the clues to find out';
+      if (i === 0 || i === world.places.length - 1) f.className = 'known';
+      wrap.appendChild(f);
+    });
+  }
+
   let quizSolved = false;
   function openQuiz(i) {
     state = 'quiz'; quizSolved = false;
     const pl = world.places[i], c = pl.clue;
     $('quiz-stop').textContent = i === 0 ? 'Start · clue 1 of 4' : `Stop ${i} of 4 reached · clue ${i + 1} of 4`;
     $('quiz-title').textContent = pl.name;
+    setPhoto('quiz', pl);
     $('quiz-blurb').textContent = pl.blurb;
     $('quiz-q').textContent = c.q;
     const opts = $('quiz-options'); opts.innerHTML = '';
@@ -643,6 +714,8 @@
     $('end-text').textContent = won
       ? `Finished in ${fmt(elapsed)} at ${speed.label.toLowerCase()} pace with ${wrongCount} wrong answer${wrongCount === 1 ? '' : 's'}.${speed.default || speed.mps < 14 ? '' : ' Try a slower pace for a challenge!'}`
       : `Try a faster pace, or take the shortest streets — the minimap (top-right) shows the way.`;
+    $('end-photo').hidden = !won;
+    if (won) setPhoto('end', world.places[world.places.length - 1]);
     show('quiz', false); show('end', true);
     $('again-btn').focus();
     if (won) [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.2, 'triangle'), i * 120));
@@ -672,10 +745,11 @@
   $('menu-btn').onclick = toMenu;
 
   // ---------------- input ----------------
-  const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', KeyA: 'left', KeyD: 'right', KeyW: 'up', KeyS: 'down' };
+  const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', KeyA: 'left', KeyD: 'right', KeyW: 'up', KeyS: 'down', ShiftLeft: 'sprint', ShiftRight: 'sprint' };
   addEventListener('keydown', (e) => {
     // let focused buttons keep native Enter/Space activation
     if (e.target instanceof HTMLButtonElement && (e.key === 'Enter' || e.code === 'Space')) return;
+    if (e.target instanceof HTMLAnchorElement && e.key === 'Enter') return;
     const k = KEYMAP[e.code];
     if (state === 'play' && (k || e.code === 'Space')) e.preventDefault();
     if (k) keys[k] = true;
@@ -699,7 +773,7 @@
   matchMedia('(prefers-color-scheme: light)').addEventListener('change', readPalette);
 
   // ---------------- main loop ----------------
-  let last = performance.now();
+  let last = performance.now(), tramClock = 0;
   function frame(now) {
     const raw = Math.max(0, (now - last) / 1000); last = now;
     const dt = Math.min(0.05, raw);
@@ -710,13 +784,20 @@
       timeLeft -= wall; elapsed += wall;
       if (timeLeft <= 0) { timeLeft = 0; endGame(false); }
     }
+    if (state !== 'play') BW.updateTrams(world, tramClock += (state === 'paused' ? 0 : dt));
     if (state === 'play') {
       const ev = [], steps = Math.min(6, Math.ceil(Math.min(0.3, raw) / 0.05) || 1), sdt = Math.min(0.3, raw) / steps;
-      for (let i = 0; i < steps; i++) ev.push(...BW.stepPlayer(world, player, { left: keys.left, right: keys.right, up: keys.up, down: keys.down, jump: jumpQueued && i === 0 }, sdt, speed.mps));
+      for (let i = 0; i < steps; i++) BW.updateTrams(world, tramClock += sdt), ev.push(...BW.stepPlayer(world, player, { left: keys.left, right: keys.right, up: keys.up, down: keys.down, jump: jumpQueued && i === 0, sprint: keys.sprint }, sdt, speed.mps));
       jumpQueued = false;
       for (const e of ev) {
         if (e.type === 'jump') blip(520, 0.09, 'square', 0.025);
-        if (e.type === 'bump' && animT - lastBump > 1.2) { lastBump = animT; toast('Blocked! Press Space to jump', 'bad'); blip(110, 0.12, 'square', 0.03); }
+        if (e.type === 'stumble') {
+          lastBump = animT;
+          toast(e.why === 'tram' ? 'Hit by a tram! Slowed down' : e.why === 'works' ? 'Roadworks! Go around — slowed down' : 'Tripped while sprinting! Slowed down', 'bad');
+          blip(e.why === 'tram' ? 90 : 140, 0.3, 'sawtooth', 0.045);
+        } else if (e.type === 'hit' && e.hazard.kind === 'works' && !player.sprinting && animT - lastBump > 1.2) {
+          lastBump = animT; toast('Roadworks! Go around', 'bad'); blip(110, 0.12, 'square', 0.03);
+        } else if (e.type === 'bump' && animT - lastBump > 1.2) { lastBump = animT; toast('Blocked! Press Space to jump', 'bad'); blip(110, 0.12, 'square', 0.03); }
       }
       const t = currentTarget();
       if (t) {
@@ -740,6 +821,7 @@
   resize();
   resetGame();
   buildSpeeds();
+  buildRoute();
   cam.dist = 20;
   requestAnimationFrame(frame);
   window.__bx = { world, get player() { return player; }, get state() { return state; }, get stage() { return stage; }, get timeLeft() { return timeLeft; } };
